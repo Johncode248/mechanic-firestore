@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mechanic</title>
+    
+</head>
+<body>
+
+    <header>
+        <h1>Modifikacja</h1>
+    </header>
+
+    <main>
+        <p>Edytuj pojazd</p>
+        <form action="/updatingVehicle/{{.Id}} " method="POST">
+            <label for="marka">Marka:</label><br>
+            <input type="text" id="marka" name="markaName" value="{{.Brand}}"><br>
+            <label for="nrRejestracji">Numer Rejestracyjny:</label><br>
+            <input type="text" id="nrRejestracji" name="nrRejestracjiName" value="{{.Number}}"><br>
+            <label for="rocznik">Rocznik:</label><br>
+            <input type="text" id="rocznik" name="rocznikName" value="{{.Year}}"><br>
+            <input type="submit" value="Potwierdź"/>
+        </form>
+    </main>
+
+    <footer>
+        <a href="/">Home</a><br><br>
+        <a href="/mojepojazdy">Moje Pojazdy</a><br><br>
+    </footer>
+
+</body>
+</html>

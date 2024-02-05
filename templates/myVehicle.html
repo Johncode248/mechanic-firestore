@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mechanic</title>
+    
+</head>
+<body>
+
+    <header>
+        <h1>Moje pojazdy:</h1>
+    </header>
+
+    <main>
+        
+        <p>Twoje Samochody: </p>
+
+        {{range .}}
+        <p>-----------------------------</p>
+          ID: {{.Id}}<br><br>
+          Brand: {{.Brand}}<br><br>
+          Number:  {{.Number}}<br><br>
+          Year:  {{.Year}}
+          <a href="/update/{{.Id}}/{{.Brand}}/{{.Number}}/{{.Year}}">Edit</a><br>
+          <a href="/deleteCar/{{.Id}}">Delete</a>
+         <br><br>
+        {{end}}
+        
+    </main>
+
+    <footer>
+        <a href="/">Home</a><br><br>
+        <a href="/createVehicle">Dodaj Pojazd</a><br><br>
+        
+    </footer>
+
+</body>
+</html>
