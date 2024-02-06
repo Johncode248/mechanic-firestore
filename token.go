@@ -8,6 +8,7 @@ import (
 	"firebase.google.com/go/auth"
 	"github.com/golang-jwt/jwt"
 	"github.com/labstack/echo/v4"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func verifyToken(c echo.Context) (*jwt.Token, error) {
@@ -62,4 +63,14 @@ func CreateTokenWithCookie(c echo.Context, user *auth.UserRecord) error {
 	c.SetCookie(cookie)
 
 	return nil
+}
+
+func HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	return string(bytes), err
+}
+
+func CheckPasswordHash(password, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
 }
