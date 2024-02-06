@@ -29,7 +29,7 @@ func homeHandler(c echo.Context) error {
 	claims := token.Claims.(jwt.MapClaims)
 	userID := claims["id"].(string)
 
-	return c.Render(http.StatusOK, "home.html", userID) // UserId
+	return c.Render(http.StatusOK, "home.html", userID)
 }
 
 func loginHandler(authClient *auth.Client, client *firestore.Client) echo.HandlerFunc {
@@ -38,49 +38,43 @@ func loginHandler(authClient *auth.Client, client *firestore.Client) echo.Handle
 			email := c.FormValue("emailName")
 			password := c.FormValue("passwordName")
 
-			// Logowanie do konta w Firebase Authentication
+			// Sign in to acount Firebase Authentication
 			params := (&auth.UserToCreate{}).Email(email).Password(password)
 			fmt.Println(params)
 
 			user, err := authClient.GetUserByEmail(context.Background(), email)
 			if err != nil {
-				return c.String(http.StatusInternalServerError, fmt.Sprintf("Błąd logowania: %v", err))
+				return c.String(http.StatusInternalServerError, fmt.Sprintf("Error with sign in: %v", err))
 			}
 			if user == nil {
-				c.String(http.StatusUnauthorized, "Bład nieprawidłowy email")
+				return c.String(http.StatusUnauthorized, "Incorrect email")
 
 			} else {
 				collRef := client.Collection("users")
 				docRef := collRef.Doc(user.UID)
 				docSnapShot, err := docRef.Get(context.TODO())
 				if err != nil {
-					log.Fatal("error getting document snapshot: %v", err)
+					return c.Redirect(http.StatusFound, "/login")
 				}
 				var passwordDb interface{}
 				data := docSnapShot.Data()
 				for id, val := range data {
-					//fmt.Printf("%v : %v", id, val)
+
 					if id == user.UID {
-						//passwordDb = val
 						if m, ok := val.(map[string]interface{}); ok {
-							// Access the value using the key "firstname"
 							firstname, found := m["password"].(string)
-							if found {
-								fmt.Println("Firstname:", firstname)
-							} else {
-								fmt.Println("Firstname not found or not a string")
+							if !found {
+								fmt.Println("Password not found or not a string")
+								return c.String(http.StatusUnauthorized, "Incorrect email")
 							}
-							// Assign the map to passwordDb if needed
 							passwordDb = firstname
 						}
 					}
-
 				}
-				if passwordDb == password {
-					fmt.Println(passwordDb, "==", password)
+				if CheckPasswordHash(password, passwordDb.(string)) {
 					err = CreateTokenWithCookie(c, user)
 					if err != nil {
-						panic(err)
+						return c.Redirect(http.StatusFound, "/login")
 					}
 					return c.Redirect(http.StatusFound, "/")
 
@@ -94,11 +88,11 @@ func loginHandler(authClient *auth.Client, client *firestore.Client) echo.Handle
 	}
 }
 
-func rejestrHandler(c echo.Context) error {
+func registrHandler(c echo.Context) error {
 	return c.Render(http.StatusOK, "rejestracja.html", nil)
 }
 
-func potwierdzenieHandler(authClient *auth.Client, client *firestore.Client) echo.HandlerFunc {
+func SignUpHandler(authClient *auth.Client, client *firestore.Client) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		email := c.FormValue("emailName")
 		password := c.FormValue("passwordName")
@@ -110,10 +104,11 @@ func potwierdzenieHandler(authClient *auth.Client, client *firestore.Client) ech
 		u, err := authClient.CreateUser(context.Background(), params)
 		if err != nil {
 			log.Printf("Error creating user: %v", err)
-			return echo.NewHTTPError(http.StatusBadRequest, "Error creating user: "+err.Error())
+			return c.Redirect(http.StatusFound, "/rejestracja")
 		}
 
 		CreateTokenWithCookie(c, u)
+		password, _ = HashPassword(password)
 
 		user := map[string]User{
 			u.UID: {
@@ -127,7 +122,7 @@ func potwierdzenieHandler(authClient *auth.Client, client *firestore.Client) ech
 
 		CreateField(docRef, user)
 
-		return c.Render(http.StatusOK, "potwierdzenie.html", nil)
+		return c.Redirect(http.StatusFound, "/")
 	}
 }
 
@@ -136,7 +131,8 @@ func profilHandler(authClient *auth.Client, client *firestore.Client) echo.Handl
 
 		token, err := verifyToken(c)
 		if err != nil {
-			return c.Render(http.StatusOK, "home.html", nil)
+			//return c.Render(http.StatusOK, "home.html", nil)
+			return c.Redirect(http.StatusFound, "/login")
 		}
 
 		claims := token.Claims.(jwt.MapClaims)
@@ -154,19 +150,16 @@ func profilHandler(authClient *auth.Client, client *firestore.Client) echo.Handl
 			fmt.Println()
 		}
 
-		submapa, _ := data[userID]
+		submapa := data[userID]
 		var userSend UserProfil
 		if submapa, ok := submapa.(map[string]interface{}); ok {
-			wFirst, _ := submapa["password"]
-			wLast, _ := submapa["date"]
-			numberofCars, _ := submapa["numberofCars"]
-
-			userSend.ID = userID
-			userSend.Password = wFirst
-			userSend.CreatedAt = wLast
-			userSend.NumberofCars = numberofCars
+			userSend = UserProfil{
+				ID:           userID,
+				Password:     submapa["password"],
+				CreatedAt:    submapa["date"],
+				NumberofCars: submapa["numberofCars"],
+			}
 		}
-
 		return c.Render(http.StatusOK, "profil.html", userSend)
 	}
 }
@@ -175,8 +168,7 @@ func myVehicleHandler(authClient *auth.Client, client *firestore.Client) echo.Ha
 	return func(c echo.Context) error {
 		token, err := verifyToken(c)
 		if err != nil {
-			// Return an error response to the client
-			return c.Render(http.StatusBadRequest, "error.html", map[string]string{"message": "Invalid token"})
+			return c.Redirect(http.StatusFound, "/login")
 		}
 
 		claims := token.Claims.(jwt.MapClaims)
@@ -189,15 +181,15 @@ func myVehicleHandler(authClient *auth.Client, client *firestore.Client) echo.Ha
 		if err != nil {
 			// Log the error and return an error response to the client
 			log.Printf("Error getting document snapshot: %v", err)
-			return c.Render(http.StatusInternalServerError, "error.html", map[string]string{"message": "Internal Server Error"})
+			return c.Redirect(http.StatusFound, "/")
 		}
 
 		data := docSnapShot.Data()
 
-		submapa, _ := data[userID]
+		submapa := data[userID]
 		var RealList []string
 		if submapa, ok := submapa.(map[string]interface{}); ok {
-			carlist, _ := submapa["carlist"]
+			carlist := submapa["carlist"]
 			if carlistSlice, ok := carlist.([]interface{}); ok {
 				for _, v := range carlistSlice {
 					if str, ok := v.(string); ok {
@@ -210,22 +202,18 @@ func myVehicleHandler(authClient *auth.Client, client *firestore.Client) echo.Ha
 		var Lista_produktow []Car
 		var e_car Car
 		for _, v := range RealList {
-			sub, _ := data[v]
+			sub := data[v]
 			if sub, ok := sub.(map[string]interface{}); ok {
-				brand := sub["brand"]
-				id := sub["id"]
-				number := sub["number"]
-				year := sub["year"]
-
-				e_car.Brand = brand.(string)
-				e_car.Id = id.(string)
-				e_car.Number = number.(string)
-				e_car.Year = year.(string)
+				e_car = Car{
+					Brand:  sub["brand"].(string),
+					Id:     sub["id"].(string),
+					Number: sub["number"].(string),
+					Year:   sub["year"].(string),
+				}
 
 				Lista_produktow = append(Lista_produktow, e_car)
 			}
 		}
-		fmt.Println(Lista_produktow)
 		return c.Render(http.StatusOK, "myVehicle.html", Lista_produktow)
 	}
 }
@@ -240,9 +228,13 @@ func addVehicleHandler(authClient *auth.Client, client *firestore.Client) echo.H
 		nrRejestracji := c.FormValue("nrRejestracjiName")
 		rocznik := c.FormValue("rocznikName")
 
+		if marka == "" || nrRejestracji == "" || rocznik == "" {
+			return c.Redirect(http.StatusFound, "/createVehicle")
+		}
+
 		token, err := verifyToken(c)
 		if err != nil {
-			return c.Render(http.StatusOK, "home.html", nil)
+			return c.Redirect(http.StatusFound, "/login")
 		}
 
 		claims := token.Claims.(jwt.MapClaims)
@@ -258,9 +250,9 @@ func addVehicleHandler(authClient *auth.Client, client *firestore.Client) echo.H
 		data := docSnapShot.Data()
 		var numberofCars interface{}
 
-		submapa, _ := data[userID]
+		submapa := data[userID]
 		if submapa, ok := submapa.(map[string]interface{}); ok {
-			numberofCars, _ = submapa["numberofCars"]
+			numberofCars = submapa["numberofCars"]
 		}
 		newId := uuid.New().String()
 
@@ -278,25 +270,18 @@ func addVehicleHandler(authClient *auth.Client, client *firestore.Client) echo.H
 		UpdatePath(docRef, userID, "numberofCars", numberCar)
 		UpdatePath(docRef, userID, "carlist", firestore.ArrayUnion(newId))
 
-		CreateField(docRef, carToAdd) // Dodawanie pojazdu
+		CreateField(docRef, carToAdd) // Adding vehicle to Firestore
 		return c.Redirect(http.StatusFound, "/mojepojazdy")
-
-		//return c.Render(http.StatusOK, "myVehicle.html", nil)
 	}
 }
 
 func updateVehicleHandler(authClient *auth.Client, client *firestore.Client) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		idVehicle := c.Param("idvehicle")
-		brandvehicle := c.Param("brandvehicle")
-		number := c.Param("number")
-		year := c.Param("year")
-
 		myCar := Car{
-			Id:     idVehicle,
-			Brand:  brandvehicle,
-			Number: number,
-			Year:   year,
+			Id:     c.Param("idvehicle"),
+			Brand:  c.Param("brandvehicle"),
+			Number: c.Param("number"),
+			Year:   c.Param("year"),
 		}
 		return c.Render(http.StatusOK, "updateVehicle.html", myCar)
 	}
@@ -305,15 +290,16 @@ func updateVehicleHandler(authClient *auth.Client, client *firestore.Client) ech
 func updatingVehicle(authClient *auth.Client, client *firestore.Client) echo.HandlerFunc {
 	return func(c echo.Context) error {
 
+		token, err := verifyToken(c)
+		if err != nil {
+			return c.Redirect(302, "/login")
+		}
+
 		idVehicle := c.Param("idvehicle")
 		marka := c.FormValue("markaName")
 		nrRejestracji := c.FormValue("nrRejestracjiName")
 		rocznik := c.FormValue("rocznikName")
 
-		token, err := verifyToken(c)
-		if err != nil {
-			return c.Redirect(302, "/login")
-		}
 		claims := token.Claims.(jwt.MapClaims)
 		userID := claims["id"].(string)
 
@@ -334,8 +320,10 @@ func delatingVehicle(authClient *auth.Client, client *firestore.Client) echo.Han
 			return c.Redirect(302, "/login")
 		}
 		idVehicle := c.Param("idvehicle")
+
 		claims := token.Claims.(jwt.MapClaims)
 		userID := claims["id"].(string)
+
 		collRef := client.Collection("users")
 		docRef := collRef.Doc(userID)
 
@@ -364,13 +352,10 @@ func delatingVehicle(authClient *auth.Client, client *firestore.Client) echo.Han
 
 		wg.Wait()
 
-		//UpdatePath(docRef, userID, "numberofCars", liczbaAut)
-
 		docSnapShot, err := docRef.Get(context.TODO())
 		if err != nil {
-			// Log the error and return an error response to the client
 			log.Printf("Error getting document snapshot: %v", err)
-			return c.Render(http.StatusInternalServerError, "error.html", map[string]string{"message": "Internal Server Error"})
+			return c.Redirect(http.StatusFound, "/mojepojazdy")
 		}
 
 		data := docSnapShot.Data()
